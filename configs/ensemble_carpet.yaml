@@ -1,0 +1,21 @@
+# Ensemble: PatchCore + PaDiM vote on MVTec carpet
+category: carpet
+data_root: data/mvtec
+
+# Paths to prediction dumps (image_path + pred_score + label)
+members:
+  - name: patchcore
+    predictions: results/carpet_patchcore/latest/predictions.json
+  - name: padim
+    predictions: results/carpet_padim/latest/predictions.json
+
+# and: both must flag anomaly (lower FP)
+# or: either flags anomaly (higher recall)
+# mean: average normalized scores, then adaptive threshold
+vote: and
+
+threshold:
+  max_fpr: 0.05
+  method: max_f1_under_fpr
+
+results_dir: results/carpet_ensemble

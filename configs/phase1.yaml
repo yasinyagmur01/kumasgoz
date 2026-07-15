@@ -1,0 +1,17 @@
+# Phase 1 MVP paths
+db_path: data/kumasgoz.db
+profiles_dir: profiles
+
+blur:
+  threshold: 100.0
+
+calibration:
+  max_fpr: 0.05
+  method: normal_percentile
+
+dashboard:
+  host: 127.0.0.1
+  port: 8080
+
+watchdog:
+  interval_s: 5

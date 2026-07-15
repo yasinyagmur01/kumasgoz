@@ -1,0 +1,21 @@
+# Fake GPIO / NC relay actuation (Phase 0 Adım 4)
+gpio:
+  backend: fake
+  pin: 18
+  fail_safe_on_close: true
+
+actuation:
+  stop_confirm_frames: 2
+  resume_confirm_frames: 3
+  latch_on_stop: true
+  watchdog_timeout_s: 2.0
+  fail_safe_on_error: true
+
+# Replay source: ensemble-aligned predictions
+ensemble_config: configs/ensemble_carpet.yaml
+# Use AND vote (lower FP) to drive the relay
+vote: and
+# Prefer adaptive thresholds from Adım 2 when present
+use_adaptive_thresholds: true
+
+results_dir: results/actuation_sim

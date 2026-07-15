@@ -1,0 +1,28 @@
+# PaDiM on MVTec carpet (ensemble partner for PatchCore)
+category: carpet
+data_root: data/mvtec
+results_dir: results/carpet_padim
+
+model:
+  name: Padim
+  backbone: resnet18
+  layers:
+    - layer1
+    - layer2
+    - layer3
+  n_features: 100
+
+train:
+  image_size: 256
+  train_batch_size: 16
+  eval_batch_size: 16
+  num_workers: 4
+  max_epochs: 1
+  accelerator: auto
+  devices: 1
+
+seed: 42
+
+threshold:
+  max_fpr: 0.05
+  method: max_f1_under_fpr

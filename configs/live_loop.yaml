@@ -1,0 +1,32 @@
+# Live loop — blur → ensemble scores → actuation → SQLite
+db_path: data/kumasgoz.db
+profiles_dir: profiles
+profile_id: carpet_patchcore_v1
+
+# Replay folder (MVTec test set = simulated line camera)
+image_dir: data/mvtec/carpet/test
+limit: 0  # 0 = all
+
+blur:
+  threshold: 50.0
+  skip_blurry: true
+
+vote: and
+
+# Per-member prediction dumps (path-aligned scores)
+members:
+  patchcore: results/carpet_patchcore/latest/predictions.json
+  padim: results/carpet_padim/latest/predictions.json
+
+# Thresholds: prefer adaptive files; fallback 0.5
+thresholds:
+  patchcore: results/carpet_patchcore/latest/adaptive_threshold.json
+  padim: results/carpet_padim/latest/adaptive_threshold.json
+
+actuation:
+  stop_confirm_frames: 2
+  resume_confirm_frames: 3
+  latch_on_stop: true
+  watchdog_timeout_s: 0
+
+results_dir: results/live_loop

@@ -1,0 +1,30 @@
+[project]
+name = "kumasgoz"
+version = "0.1.0"
+description = "Textile fabric anomaly detection for production lines"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "anomalib[full]>=1.0.0",
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "pytorch-lightning>=2.0.0",
+    "opencv-python-headless>=4.8.0",
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.66.0",
+    "pandas>=2.0.0",
+    "matplotlib>=3.7.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

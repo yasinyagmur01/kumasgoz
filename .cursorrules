@@ -1,0 +1,17 @@
+# Kumaşgöz — Phase rules
+
+## Product
+Industrial textile anomaly detection on fabric production lines. Softwaresimulates-first; hardware comes after Phase 1.
+
+## Active phase
+Phase 1 — MVP live loop E2E done (blur → ensemble → actuation → SQLite).
+Optional next: online GPU infer (not score-bank), camera capture stub, dashboard live tail.
+
+## Phase 0 success
+PatchCore (and later adaptive threshold / ensemble / fake GPIO) runs on MVTec texture categories with measurable FP rate. Target after adaptive threshold: FP < 5%.
+
+## Coding conventions
+- Prefer clear scripts under `scripts/` and reusable logic under `src/kumasgoz/`.
+- Do not re-download MVTec if local archive / `data/mvtec` exists.
+- Keep hardware/GPIO behind interfaces so fake GPIO can swap to real GPIO later.
+- Do not commit `data/`, `results/`, checkpoints, or secrets.

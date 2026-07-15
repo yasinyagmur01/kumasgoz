@@ -1,0 +1,31 @@
+# PatchCore on MVTec carpet (textile texture proxy)
+category: carpet
+data_root: data/mvtec
+results_dir: results/carpet_patchcore
+
+model:
+  name: Patchcore
+  backbone: wide_resnet50_2
+  layers:
+    - layer2
+    - layer3
+  coreset_sampling_ratio: 0.1
+  num_neighbors: 9
+
+train:
+  image_size: 256
+  train_batch_size: 16
+  eval_batch_size: 16
+  num_workers: 4
+  max_epochs: 1
+  accelerator: auto
+  devices: 1
+
+seed: 42
+
+# Phase 0 Adım 2 — adaptive decision threshold
+threshold:
+  max_fpr: 0.05
+  # max_f1_under_fpr: best F1 with FPR <= max_fpr
+  # normal_percentile: (1-max_fpr) percentile of normal scores (calibration-style)
+  method: max_f1_under_fpr
