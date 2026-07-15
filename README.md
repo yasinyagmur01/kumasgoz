@@ -66,10 +66,17 @@ python scripts/08_ingest_sqlite.py
 # 10) FastAPI dashboard (http://127.0.0.1:8080)
 python scripts/09_run_dashboard.py --port 8080
 
-# 11) Live loop E2E (blur → ensemble → actuation → SQLite)
+# 11) Live loop E2E — score-bank replay (default)
 python scripts/10_live_loop.py --config configs/live_loop.yaml
 
-# Optional: supervisord (watchdog + dashboard)
+# 11b) Live loop — online GPU infer (loads PatchCore + PaDiM checkpoints)
+python scripts/10_live_loop.py --config configs/live_loop.yaml --mode online --limit 8
+
+# 11c) Capture stubs (folder default; video / webcam)
+python scripts/10_live_loop.py --capture video --video /path/to/clip.mp4 --mode online --limit 30
+# python scripts/10_live_loop.py --capture webcam --webcam 0 --mode online --limit 30
+
+# Optional: supervisord (watchdog + dashboard with SSE live tail)
 # supervisord -c deploy/supervisord.conf
 ```
 
@@ -118,11 +125,13 @@ RTX 4070 Laptop, MVTec `carpet`, PatchCore (Wide-ResNet50):
 | Blur detection (Laplacian) | `src/kumasgoz/blur.py` |
 | Memory-bank profil | `carpet_patchcore_v1` @ 0.521 |
 | Calibration wizard | `scripts/07_calibration_wizard.py` |
-| FastAPI dashboard | `:8080` |
+| FastAPI dashboard + SSE live tail | `:8080` (`/api/events/stream`) |
 | Watchdog + supervisord | `deploy/supervisord.conf` |
-| **Live loop E2E** | blur → AND vote → debounce STOP → SQLite |
+| Capture stub | folder / video / webcam (`src/kumasgoz/capture.py`) |
+| Online GPU infer | `--mode online` (`src/kumasgoz/infer.py`) |
+| **Live loop E2E** | capture → blur → bank\|GPU → vote → STOP → SQLite |
 
-Live loop (117 test frame): anomaly=86, blur reject=0, score miss=0, false STOP=0, final **STOP**.
+Live loop score-bank (117 test frame): anomaly=86, blur reject=0, score miss=0, false STOP=0, final **STOP**.
 
 Rapor: `results/live_loop/latest/live_loop_report.md`
 

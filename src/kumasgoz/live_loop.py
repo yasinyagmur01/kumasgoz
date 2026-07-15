@@ -2,22 +2,20 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
-from kumasgoz.actuation import ActuationConfig, ActuationPipeline, FrameDecision
-from kumasgoz.blur import assess_blur_path
-from kumasgoz.db import EventStore
-from kumasgoz.ensemble import binary_vote
-from kumasgoz.gpio import Actuator, FakeGPIO, LineState
-from kumasgoz.predict_dump import load_member_by_path
-from kumasgoz.profiles import ProfileRegistry
 import numpy as np
 
-
-IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+from kumasgoz.actuation import ActuationConfig, ActuationPipeline, FrameDecision
+from kumasgoz.blur import assess_blur, assess_blur_path
+from kumasgoz.capture import FrameSource, FolderFrameSource
+from kumasgoz.db import EventStore
+from kumasgoz.ensemble import binary_vote
+from kumasgoz.gpio import Actuator, FakeGPIO
+from kumasgoz.infer import ScoreProvider
+from kumasgoz.predict_dump import load_member_by_path
 
 
 @dataclass
@@ -31,6 +29,7 @@ class LiveLoopConfig:
     watchdog_timeout_s: float = 0.0  # disable during batch replay
     profile_id: str = "carpet_patchcore_v1"
     member_thresholds: dict[str, float] = field(default_factory=dict)
+    score_mode: str = "score_bank"  # score_bank | online
 
 
 @dataclass
@@ -58,16 +57,23 @@ class ScoreBank:
         loaded = {name: load_member_by_path(Path(path)) for name, path in mapping.items()}
         return cls(loaded)
 
-    def scores_for(self, path: str) -> dict[str, float] | None:
-        path = str(Path(path).resolve())
-        # Also try unmatched raw path
+    def scores_for(
+        self,
+        path: str,
+        image_bgr: np.ndarray | None = None,
+    ) -> dict[str, float] | None:
+        del image_bgr  # unused in score-bank mode
+        path = str(Path(path).resolve()) if Path(path).exists() else str(path)
         out: dict[str, float] = {}
         for name, rec in self.members.items():
             if path in rec:
                 out[name] = float(rec[path]["score"])
             else:
-                # fuzzy: match by basename under same defect folder
-                matches = [k for k in rec if Path(k).name == Path(path).name and Path(k).parent.name == Path(path).parent.name]
+                matches = [
+                    k
+                    for k in rec
+                    if Path(k).name == Path(path).name and Path(k).parent.name == Path(path).parent.name
+                ]
                 if len(matches) == 1:
                     out[name] = float(rec[matches[0]]["score"])
                 else:
@@ -75,18 +81,18 @@ class ScoreBank:
         return out
 
     def label_for(self, path: str) -> int | None:
-        path = str(Path(path).resolve())
+        path = str(Path(path).resolve()) if Path(path).exists() else str(path)
         for rec in self.members.values():
             if path in rec:
                 return int(rec[path]["label"])
-            matches = [k for k in rec if Path(k).name == Path(path).name and Path(k).parent.name == Path(path).parent.name]
+            matches = [
+                k
+                for k in rec
+                if Path(k).name == Path(path).name and Path(k).parent.name == Path(path).parent.name
+            ]
             if len(matches) == 1:
                 return int(rec[matches[0]]["label"])
         return None
-
-
-def discover_images(folder: Path) -> list[Path]:
-    return sorted(p for p in Path(folder).rglob("*") if p.suffix.lower() in IMAGE_EXTS)
 
 
 def decide_anomaly(
@@ -99,7 +105,6 @@ def decide_anomaly(
     thr = np.array([float(thresholds.get(n, 0.5)) for n in names], dtype=np.float64)
     if vote == "mean":
         fused = float(scores.mean())
-        # mean threshold = mean of member thresholds
         return fused >= float(thr.mean()), fused
     preds = (scores >= thr).astype(np.int64).reshape(len(names), 1)
     voted = int(binary_vote(preds, mode=vote)[0])
@@ -109,7 +114,7 @@ def decide_anomaly(
 @dataclass
 class LiveLoop:
     store: EventStore
-    score_bank: ScoreBank
+    scorer: ScoreProvider
     config: LiveLoopConfig
     actuator: Actuator = field(default_factory=FakeGPIO)
     pipeline: ActuationPipeline | None = field(default=None, init=False)
@@ -126,11 +131,27 @@ class LiveLoop:
             ),
         )
 
-    def process_path(self, path: Path) -> FrameResult:
-        path = Path(path)
-        abs_path = str(path.resolve())
-        blur = assess_blur_path(path, threshold=self.config.blur_threshold)
-        self.store.add_heartbeat("live_loop", ok=True, detail=path.name)
+    @property
+    def score_bank(self) -> ScoreProvider:
+        """Alias kept for older call sites / tests."""
+        return self.scorer
+
+    def process_frame(
+        self,
+        path: str,
+        image_bgr: np.ndarray | None = None,
+        label: int | None = None,
+    ) -> FrameResult:
+        abs_path = str(Path(path).resolve()) if Path(path).exists() else str(path)
+        if image_bgr is None:
+            blur = assess_blur_path(abs_path, threshold=self.config.blur_threshold)
+        else:
+            blur = assess_blur(image_bgr, threshold=self.config.blur_threshold, path=abs_path)
+
+        self.store.add_heartbeat("live_loop", ok=True, detail=Path(abs_path).name)
+
+        if label is None:
+            label = self.scorer.label_for(abs_path)
 
         if blur.is_blurry and self.config.skip_blurry:
             self.store.add_event(
@@ -149,20 +170,19 @@ class LiveLoop:
                 score=None,
                 line_state=self.actuator.get_line().value,
                 actuated=None,
-                label=self.score_bank.label_for(abs_path),
+                label=label,
             )
             self.results.append(result)
             return result
 
-        member_scores = self.score_bank.scores_for(abs_path)
+        member_scores = self.scorer.scores_for(abs_path, image_bgr=image_bgr)
         if member_scores is None:
             self.store.add_event(
                 "score_miss",
                 image_path=abs_path,
                 profile_id=self.config.profile_id,
-                reason="no_precomputed_score",
+                reason="no_precomputed_score" if self.config.score_mode == "score_bank" else "infer_failed",
             )
-            # Fail-safe optional: do not stop on missing score during replay
             result = FrameResult(
                 path=abs_path,
                 skipped_blur=False,
@@ -171,7 +191,7 @@ class LiveLoop:
                 score=None,
                 line_state=self.actuator.get_line().value,
                 actuated=None,
-                label=self.score_bank.label_for(abs_path),
+                label=label,
             )
             self.results.append(result)
             return result
@@ -181,13 +201,12 @@ class LiveLoop:
             self.config.member_thresholds,
             self.config.vote,
         )
-        label = self.score_bank.label_for(abs_path)
         decision = FrameDecision(
             path=abs_path,
             is_anomaly=is_anom,
             score=fused,
             label=label,
-            meta={"members": member_scores, "vote": self.config.vote},
+            meta={"members": member_scores, "vote": self.config.vote, "mode": self.config.score_mode},
         )
         event = self.pipeline.process(decision)
 
@@ -199,7 +218,7 @@ class LiveLoop:
             line_state=self.actuator.get_line().value,
             reason=event.reason if event else None,
             profile_id=self.config.profile_id,
-            payload={"members": member_scores, "blur_variance": blur.variance},
+            payload={"members": member_scores, "blur_variance": blur.variance, "mode": self.config.score_mode},
         )
         if event is not None:
             self.store.add_event(
@@ -226,19 +245,25 @@ class LiveLoop:
         self.results.append(result)
         return result
 
-    def run_folder(self, folder: Path, limit: int = 0) -> dict[str, Any]:
-        images = discover_images(folder)
-        if limit > 0:
-            images = images[:limit]
+    def process_path(self, path: Path) -> FrameResult:
+        return self.process_frame(str(Path(path).resolve()))
+
+    def run_source(self, source: FrameSource, limit: int = 0) -> dict[str, Any]:
         self.store.add_event(
             "live_loop_start",
-            reason="run_folder",
+            reason="run_source",
             profile_id=self.config.profile_id,
-            payload={"folder": str(folder), "n": len(images), "vote": self.config.vote},
+            payload={"vote": self.config.vote, "mode": self.config.score_mode, "limit": limit},
         )
-        for img in images:
-            self.process_path(img)
+        for frame in source.frames(limit=limit):
+            self.process_frame(frame.path, image_bgr=frame.image_bgr, label=frame.label)
+        return self._summary()
 
+    def run_folder(self, folder: Path, limit: int = 0) -> dict[str, Any]:
+        # Prefer capture source so ndarray is available for online GPU infer
+        return self.run_source(FolderFrameSource(folder=Path(folder)), limit=limit)
+
+    def _summary(self) -> dict[str, Any]:
         n_anom = sum(1 for r in self.results if r.is_anomaly is True)
         n_blur = sum(1 for r in self.results if r.skipped_blur)
         n_miss = sum(1 for r in self.results if r.is_anomaly is None and not r.skipped_blur)
@@ -251,6 +276,7 @@ class LiveLoop:
             "n_actuation_events": n_stop_evt,
             "final_line_state": self.actuator.get_line().value,
             "coil_energized": getattr(self.actuator, "coil_energized", None),
+            "score_mode": self.config.score_mode,
             "db_stats": self.store.stats(),
         }
         self.store.add_event(

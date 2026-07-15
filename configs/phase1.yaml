@@ -1,4 +1,4 @@
-# Phase 1 MVP paths
+# Phase 1 MVP + polish paths
 db_path: data/kumasgoz.db
 profiles_dir: profiles
 
@@ -12,6 +12,11 @@ calibration:
 dashboard:
   host: 127.0.0.1
   port: 8080
+  # Live tail via SSE: GET /api/events/stream
 
 watchdog:
   interval_s: 5
+
+live_loop:
+  default_mode: score_bank  # or online
+  capture: folder           # folder | video | webcam

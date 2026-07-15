@@ -168,6 +168,39 @@ class EventStore:
                 ).fetchall()
         return [dict(r) for r in rows]
 
+    def list_events_since(
+        self,
+        after_id: int = 0,
+        limit: int = 100,
+        event_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return events with id > after_id in ascending order (for live tail / SSE)."""
+        with self.connect() as conn:
+            if event_type:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM events
+                    WHERE id > ? AND event_type = ?
+                    ORDER BY id ASC LIMIT ?
+                    """,
+                    (after_id, event_type, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM events
+                    WHERE id > ?
+                    ORDER BY id ASC LIMIT ?
+                    """,
+                    (after_id, limit),
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def max_event_id(self) -> int:
+        with self.connect() as conn:
+            row = conn.execute("SELECT COALESCE(MAX(id), 0) AS m FROM events").fetchone()
+        return int(row["m"])
+
     def list_profiles(self) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute("SELECT * FROM profiles ORDER BY created_at DESC").fetchall()

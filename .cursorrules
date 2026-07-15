@@ -4,8 +4,8 @@
 Industrial textile anomaly detection on fabric production lines. Softwaresimulates-first; hardware comes after Phase 1.
 
 ## Active phase
-Phase 1 — MVP live loop E2E done (blur → ensemble → actuation → SQLite).
-Optional next: online GPU infer (not score-bank), camera capture stub, dashboard live tail.
+Phase 1 polish — online GPU infer, camera capture stub, dashboard live tail (done alongside MVP E2E).
+Next: Phase 2 hardware (Jetson, real GPIO, CSI camera) when procurement starts.
 
 ## Phase 0 success
 PatchCore (and later adaptive threshold / ensemble / fake GPIO) runs on MVTec texture categories with measurable FP rate. Target after adaptive threshold: FP < 5%.
